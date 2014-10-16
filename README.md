@@ -8,5 +8,5 @@
 Download and run Mongo DB server.
 
 To use JSON Web Token generate public and private keys using the command:<br />
-  <indent>$ openssl genrsa -out demo.rsa 1024 # the 1024 is the size of the key we are generating</indent>
-  $ openssl rsa -in demo.rsa -pubout > demo.rsa.pub 
+<div>$ openssl genrsa -out demo.rsa 1024 # the 1024 is the size of the key we are generating</div>
+<div>$ openssl rsa -in demo.rsa -pubout > demo.rsa.pub</div> 
