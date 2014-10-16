@@ -1,0 +1,182 @@
+﻿<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <title>Vocabulary Learning</title>
+    <!-- Bootcards based on Bootstrap http://bootcards.org/  -->
+    <!-- Bootstrap CSS -->
+    <link href="//netdna.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Important: you'll only need one of the Bootcards CSS files below for every platform -->
+    <!-- Bootcards CSS for iOS: -->
+    <!--<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bootcards/0.1.0/css/bootcards-ios.min.css">-->
+    <!-- Bootcards CSS for Android: -->
+    <!--<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bootcards/0.1.0/css/bootcards-android.min.css">-->
+    <!-- Bootcards CSS for desktop: -->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bootcards/0.1.0/css/bootcards-desktop.min.css">
+    <!-- Bootstrap and Bootcards JS -->
+    <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+    <script src="//netdna.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/bootcards/0.1.0/js/bootcards.min.js"></script>
+    <script src="/scripts/knockout-3.2.0.js"></script>
+
+    <style type="text/css">
+        #old {
+            display: block;
+        }
+    </style>
+
+    <script type="text/javascript">
+        (function (self, $) {
+            self.Entry = function (e) {
+                this.id = ko.observable(e.Id);
+                this.word = ko.observable(e.Word);
+                this.translation = ko.observable(e.Translation);
+            };
+
+            var stub = new self.Entry({ Word: '', Translation: '' });
+
+            self.EntryViewModel = function () {
+                var root = this;
+
+                root.newModel = ko.observable(stub);
+                root.entries = ko.observableArray();
+
+                root.getEntries = function () {
+                    $.ajax({
+                        url: '/api/entry/',
+                        method: 'GET',
+                        success: function (data) {
+                            root.newModel(stub);
+                            root.entries($.isArray(data) ? ko.utils.arrayMap(data, function (i) {
+                                return new self.Entry(i);
+                            }) : []);
+                        },
+                        error: function (xhr) {
+                            root.newModel(stub);
+                            alert(xhr.responseText || 'error on the server');
+                        }
+                    });
+                };
+                root.postEntry = function () {
+                    $.ajax({
+                        url: '/api/entry/',
+                        method: 'POST',
+                        data: ko.toJSON(root.newModel()),
+                        success: function (data) {
+                            root.newModel(null);
+                            root.getEntries();
+                        },
+                        error: function (xhr) {
+                            root.newModel(stub);
+                            alert(xhr.responseText || 'error on the server');
+                        }
+                    });
+                };
+                root.cancel = function () {
+                    root.newModel(stub);
+                };
+                root.deleteEntry = function () {
+                    var curr = this;
+
+                    $.ajax({
+                        url: '/api/entry/' + curr.id(),
+                        method: 'DELETE',
+                        success: function () {
+                            root.newModel(stub);
+                            root.getEntries();
+                        },
+                        error: function (xhr) {
+                            root.newModel(stub);
+                            alert(xhr.responseText);
+                        }
+                    });
+                };
+            };
+
+            $(function () {
+                var vm = new EntryViewModel();
+                var container = document.getElementById('container');
+                if (!ko.dataFor(container)) {
+                    ko.applyBindings(vm, container);
+                }
+                vm.getEntries();
+            });
+        })(window, jQuery);
+    </script>
+</head>
+<body>
+    <div id="container" class="container">
+
+        <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+            <div class="container">
+                <div class="navbar-header">
+                    <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                        <span class="sr-only">Toggle navigation</span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </button>
+                </div>
+                <button type="button" class="btn btn-default btn-back pull-left hidden" onclick="history.back()">
+                    <i class="fa fa-lg fa-chevron-left"></i>
+                    <span>Back</span>
+                </button>
+                <button type="button" class="btn btn-default btn-menu pull-left offcanvas-toggle">
+                    <i class="fa fa-lg fa-bars"></i>
+                    <span>Menu</span>
+                </button>
+                <a class="navbar-brand" title="Customers v{{getAppVersion}}" href="/">Vocabulary</a>
+            </div>
+        </div>
+
+        <div class="panel panel-default">
+            <div class="panel-heading clearfix">
+                <h3 class="panel-title pull-left">New word</h3>
+                <div class="btn-group pull-right">
+                    <button class="btn btn-danger" data-bind="click: $root.cancel">
+                        <i class="fa fa-times"></i>
+                        Cancel
+                    </button>
+                    <button class="btn btn-success" data-bind="click: $root.postEntry">
+                        <i class="fa fa-check"></i>
+                        Save
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" data-bind="with: newModel">
+                <form class="form-horizontal">
+                    <div class="form-group">
+                        <label class="col-xs-3 control-label">Word</label>
+                        <div class="col-xs-9">
+                            <input type="text" class="form-control" data-bind="value: word">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="col-xs-3 control-label">Translation</label>
+                        <div class="col-xs-9">
+                            <input type="text" class="form-control" data-bind="value: translation">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="panel-footer">
+                <small>X-Powered by Golang</small>
+            </div>
+        </div>
+
+
+        <div class="bootcards-list">
+            <div class="panel panel-default" data-bind="foreach: entries">
+                <div class="list-group">
+                    <a class="list-group-item" href="#" data-bind="click: $root.deleteEntry">
+                        <h4 class="list-group-item-heading" data-bind="text: word">Acey, Sofia</h4>
+                        <p class="list-group-item-text" data-bind="text: translation">Masung Corp.</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>
