@@ -1,0 +1,1 @@
+Vocabulary is a resource to learn foreign language words. X-Powered by Go on the server side, Mongo DB to store data and Knockout JS on the front end. 
