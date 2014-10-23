@@ -94,6 +94,18 @@
             };
 
             $(function () {
+				$.ajax({
+					url: '/login',
+					method: 'POST',
+					data: JSON.stringify({login: 'admin', password: 'test'}),
+					success: function (data) {
+						console.log(data)
+					},
+					error: function (xhr) {
+						alert(xhr.responseText);
+					}
+				})
+			
                 var vm = new EntryViewModel();
                 var container = document.getElementById('container');
                 if (!ko.dataFor(container)) {

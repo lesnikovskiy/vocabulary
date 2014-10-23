@@ -6,12 +6,14 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -25,7 +27,13 @@ const (
 var (
 	privateKey []byte
 	publicKey  []byte
+	addr       = flag.Bool("addr", false, "find open address and print to final-port.txt")
 )
+
+type Credentials struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}
 
 type Entry struct {
 	Id          bson.ObjectId `bson:"_id"`
@@ -43,29 +51,66 @@ func main() {
 	r.HandleFunc("/api/entry/", entriesGet).Methods("GET")
 	r.HandleFunc("/api/entry/", entriesPost).Methods("POST")
 	r.HandleFunc("/api/entry/{id}", entriesDelete).Methods("DELETE")
+	r.HandleFunc("/login", login).Methods("POST")
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
 
 	http.Handle("/", r)
+
+	if *addr {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err = ioutil.WriteFile("final-port.txt", []byte(l.Addr().String()), 0644); err != nil {
+			log.Fatal(err)
+		}
+		s := &http.Server{}
+		s.Serve(l)
+		return
+	}
+
 	log.Fatal(http.ListenAndServe(":3000", nil))
+}
+
+func login(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.Method, ":", r.RequestURI)
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+
+	var creds Credentials
+	if err = json.Unmarshal(body, &creds); err != nil {
+		handleError(w, err)
+		return
+	}
+
+	if creds.Login == "admin" && creds.Password == "test" {
+		// Generate JSON Web Token and set cookie with a token.
+		token := jwt.New(jwt.GetSigningMethod("RS256"))
+		token.Claims["ID"] = "2134asdf43451dscfds32423ASDF"
+		token.Claims["exp"] = time.Now().Unix() + 36000
+
+		tokenString, _ := token.SignedString(privateKey)
+		expires := time.Now().AddDate(0, 0, 1)
+		cookie := http.Cookie{Name: "token", Value: tokenString, Path: "/", Expires: expires, RawExpires: expires.Format(time.UnixDate), HttpOnly: true}
+		http.SetCookie(w, &cookie)
+		w.Write([]byte(tokenString))
+		return
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte("Unauthorized"))
 }
 
 func entriesGet(w http.ResponseWriter, r *http.Request) {
 	log.Println(r.Method, ":", r.RequestURI)
 
-	// Generate JSON Web Token and set cookie with a token.
-	token := jwt.New(jwt.GetSigningMethod("RS256"))
-	token.Claims["ID"] = "2134asdf43451dscfds32423ASDF"
-	token.Claims["exp"] = time.Now().Unix() + 36000
-
-	tokenString, _ := token.SignedString(privateKey)
-	expires := time.Now().AddDate(0, 0, 1)
-	cookie := http.Cookie{Name: "token", Value: tokenString, Path: "/", Expires: expires, RawExpires: expires.Format(time.UnixDate), HttpOnly: true}
-	http.SetCookie(w, &cookie)
-
 	session, err := mgo.Dial(DbServer)
 	if err != nil {
-		log.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 	defer session.Close()
@@ -75,15 +120,13 @@ func entriesGet(w http.ResponseWriter, r *http.Request) {
 	var results []Entry
 	err = collection.Find(bson.M{}).All(&results)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 
 	js, err := json.Marshal(results)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 
@@ -107,23 +150,20 @@ func entriesPost(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 
 	var entry Entry
 	if err = json.Unmarshal(body, &entry); err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 	entry.Id = bson.NewObjectId()
 
 	session, err := mgo.Dial(DbServer)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 	defer session.Close()
@@ -131,8 +171,7 @@ func entriesPost(w http.ResponseWriter, r *http.Request) {
 	session.SetSafe(&mgo.Safe{})
 	collection := session.DB(Database).C(Collection)
 	if err = collection.Insert(&entry); err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 
@@ -147,19 +186,22 @@ func entriesDelete(w http.ResponseWriter, r *http.Request) {
 
 	session, err := mgo.Dial(DbServer)
 	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 	defer session.Close()
 
 	session.SetSafe(&mgo.Safe{})
 	if err = session.DB(Database).C(Collection).RemoveId(bson.ObjectIdHex(_id)); err != nil {
-		log.Println(err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		handleError(w, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("Accepted"))
+}
+
+func handleError(w http.ResponseWriter, err error) {
+	log.Println(err)
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
